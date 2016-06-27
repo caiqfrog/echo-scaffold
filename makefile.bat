@@ -1,0 +1,1 @@
+go build -o bin/colledge.exe src/main.go
