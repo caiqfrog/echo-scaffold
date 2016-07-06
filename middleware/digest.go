@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"fmt"
 	"strings"
+	"github.com/labstack/echo/engine/standard"
 )
 
 type Digest struct {
@@ -37,20 +38,26 @@ func NewDigest(realm string, secrets digest.SecretProvider) *Digest {
  */
 func (self *Digest) Process(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		// 用于认证失败
+		defer func(e *error) {
+			if x := recover(); nil != x {
+				*e = echo.NewHTTPError(http.StatusUnauthorized, "401 Unauthorized\n")
+			}
+		}(&err)
+		// 强制转为http的类型
+		request := c.Request().(*standard.Request).Request
+		response := c.Response().(*standard.Response).ResponseWriter
 		// 跳过白名单
-		if self.check(c.Request().Method, c.Request().URL) {
+		if self.check(request.Method, request.URL) {
 			return next(c)
 		}
 		// 判断是否放行url
-		//
-		w := c.Response()
-		r := c.Request()
-		if username, nextAuth := self.auth.CheckAuth(c.Request()); username == "" {
-			self.auth.RequireAuth(w, r)
+		if username, nextAuth := self.auth.CheckAuth(request); username == "" {
+			self.auth.RequireAuth(response, request)
 			return echo.NewHTTPError(http.StatusUnauthorized, "401 Unauthorized\n");
 		} else {
 			if (nil != nextAuth) {
-				w.Header().Set("Authentication-Info", *nextAuth);
+				response.Header().Set("Authentication-Info", *nextAuth);
 			}
 			// 在echo.Context中缓存认证信息
 			c.Set("digest-user", username);
